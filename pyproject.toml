@@ -1,10 +1,13 @@
 [project]
 name = "agent-1"
 version = "0.1.0"
-description = "A replication of FDM-1"
+description = "A foundation model for a GameBoy use agent"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "playwright",
+    "beautifulsoup4",
+]
 
 [build-system]
 requires = ["hatchling"]
