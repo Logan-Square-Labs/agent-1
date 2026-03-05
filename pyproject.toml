@@ -5,8 +5,9 @@ description = "A foundation model for a GameBoy use agent"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "playwright",
     "beautifulsoup4",
+    "httpx",
+    "playwright",
 ]
 
 [build-system]
