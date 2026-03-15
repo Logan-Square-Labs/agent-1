@@ -54,5 +54,9 @@ genres from [World of Longplays](https://longplays.org/).
 
 The directory is organized into the following subdirectories:
 
-- `longplays/`: Raw video files downloaded from archive.org.
-- `longplays/output/`: Processed video files saved as 160x144 grayscale frames at 30 fps with frame averaging.
+- `longplays/raw/`: Raw video files downloaded from archive.org.
+- `longplays/processed/`: Processed video files saved as 160x144 grayscale frames at 30 fps with frame averaging.
+
+Within the R2 `datasets` bucket, the longplays are organized into the following subdirectories:
+
+- `vision_encoder/DMG/longplays/`: Shards of 16-frame, 160x144 grayscale mp4 clips at 30 fps.

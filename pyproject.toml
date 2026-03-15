@@ -5,9 +5,16 @@ description = "A foundation model for a GameBoy use agent"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "av",
     "beautifulsoup4",
+    "boto3",
+    "click",
     "httpx",
+    "matplotlib>=3.10.8",
     "playwright",
+    "python-dotenv>=1.2.2",
+    "tqdm",
+    "webdataset",
 ]
 
 [build-system]
