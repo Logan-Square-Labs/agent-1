@@ -3,7 +3,7 @@
 Uses the tmix filter to blend neighbouring frames before dropping to 30 fps,
 so the result is temporally anti-aliased rather than just frame-dropped.
 
-Processed files are written to an `output/` subdirectory inside the target
+Processed files are written to a `processed/` subdirectory inside the target
 directory. Originals are never modified. Writes to a .part temp file so an
 interrupted conversion never leaves a corrupt output.
 
@@ -33,7 +33,7 @@ async def _process(src: Path, out_dir: Path, sem: asyncio.Semaphore) -> None:
         try:
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg", "-i", str(src),
-                "-vf", "format=gray,scale=160:144,tmix=frames=3:weights=1 1 1,fps=30",
+                "-vf", "format=gray,scale=160:144:flags=neighbor,tmix=frames=2:weights=1 1,fps=30",
                 "-c:v", "libx264",
                 "-pix_fmt", "gray",
                 "-an",
@@ -88,7 +88,7 @@ async def main():
         print("No mp4 files found.")
         return
 
-    out_dir = args.target_dir / "output"
+    out_dir = args.target_dir.parent / "processed"
     out_dir.mkdir(exist_ok=True)
 
     print(f"Processing {len(sources)} file(s) from {args.target_dir} -> {out_dir}\n")
