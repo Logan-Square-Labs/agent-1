@@ -1,6 +1,6 @@
 ## Code Design Guidelines
 
-**Above all, write code that is extremely simple consumable.**
+**Above all, write code that is extremely simple and consumable.**
 
 ### Writing New Code
 - Design modules to be deep: simple interfaces, rich functionality behind them.
