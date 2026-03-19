@@ -1,5 +1,7 @@
 ## Code Design Guidelines
 
+**Above all, write code that is extremely simple consumable.**
+
 ### Writing New Code
 - Design modules to be deep: simple interfaces, rich functionality behind them.
   Hide implementation details. If a class interface is nearly as complex as its

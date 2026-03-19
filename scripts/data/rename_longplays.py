@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 
-LONGPLAYS_JSON = Path(__file__).resolve().parents[2] / "agent_1" / "data" / "longplays.json"
+LONGPLAYS_JSON = Path(__file__).resolve().parents[2] / "data" / "longplays.json"
 LONGPLAYS_DIR = Path.home() / "datasets" / "longplays"
 
 

@@ -1,4 +1,4 @@
-"""Downloads Game Boy longplay videos from archive.org URLs in longplays.json.
+"""Downloads Game Boy longplay videos from archive.org URLs in data/longplays.json.
 
 Usage:
     uv run python scripts/data/download_longplays.py /path/to/output/dir
@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlparse
 import httpx
 
 LONGPLAYS_JSON = (
-    Path(__file__).resolve().parents[2] / "agent_1" / "data" / "longplays.json"
+    Path(__file__).resolve().parents[2] / "data" / "longplays.json"
 )
 MAX_CONCURRENT = 3
 

@@ -1,5 +1,5 @@
 """Scrapes longplays.org for Game Boy longplay archive.org download links
-and updates agent_1/data/longplays.json with them.
+and updates data/longplays.json with them.
 
 Usage:
     uv run python scripts/data/longplays_pipeline.py
@@ -19,7 +19,7 @@ from playwright.async_api import async_playwright
 GAMEBOY_CATEGORY_URL = (
     "https://longplays.org/infusions/longplays/longplays.php?cat_id=30"
 )
-LONGPLAYS_JSON = Path(__file__).resolve().parents[2] / "agent_1" / "data" / "longplays.json"
+LONGPLAYS_JSON = Path(__file__).resolve().parents[2] / "data" / "longplays.json"
 
 MAX_CONCURRENT_SCRAPES = 3
 MAX_CONCURRENT_RESOLVES = 3
