@@ -16,7 +16,7 @@ Example input sequence:
 [video_embeddings]<end_of_obs><action_start>[action(s)]<action_end>[video_embeddings]<end_of_obs><action_start>[action(s)]<action_end>...
 ```
 TODOs:
-- [ ] write pipeline script to:
+- [X] write pipeline script to:
   1. download longplay videos
   2. extract frames
   3. convert to grayscale
