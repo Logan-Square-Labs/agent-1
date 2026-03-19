@@ -163,8 +163,8 @@ class TransformerBlock(nn.Module):
         self.mlp = GatedMLP(hidden_size, intermediate_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.attn(self.norm1(x))
-        x = self.mlp(self.norm2(x))
+        x = x + self.attn(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
         return x
 
 
