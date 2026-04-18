@@ -6,14 +6,6 @@ import torch.nn as nn
 from einops import rearrange
 
 
-class MaskGenerator(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x
-
-
 class PatchEmbed(nn.Module):
     def __init__(self, patch_dim: tuple, in_channels: int, embed_dim: int):
         super().__init__()
@@ -54,7 +46,6 @@ def apply_rope(
     x1, x2 = torch.chunk(x.float(), 2, dim=-1)
     return torch.cat((x1 * cos - x2 * sin, x2 * cos + x1 * sin), dim=-1).type_as(x)
 
-
 def build_rope_cache(
     dim: int,
     positions: torch.Tensor,
@@ -63,7 +54,6 @@ def build_rope_cache(
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2).float() / dim))
     angles = torch.outer(positions, freqs)
     return angles.cos(), angles.sin()
-
 
 class RoPE(nn.Module):
     """Axial RoPE for 1D sequences and 2D/3D grids.
@@ -103,6 +93,9 @@ class RoPE(nn.Module):
         return apply_rope(q, cos, sin), apply_rope(k, cos, sin)
 
 
+def norm(x: torch.Tensor):
+    return F.rms_norm(x, (x.size(-1),))
+
 class Attention(nn.Module):
     def __init__(
         self,
@@ -119,10 +112,13 @@ class Attention(nn.Module):
         self.proj = nn.Linear(embed_dim, embed_dim, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # todo: add positions to handle masked values from original grid
         q, k, v = rearrange(
-            self.qkv(x), "b n (3 h d) -> 3 b h n d",
-            h=self.num_heads,
-        ).unbind(0)
+            self.qkv(x), "b n (three h d) -> b three h n d", three=3, h=self.num_heads
+        ).unbind(dim=1)
+        
+        q, k = norm(q), norm(k)
+        
         if self.rope is not None:
             q, k = self.rope(q, k)
         x = F.scaled_dot_product_attention(q, k, v)
@@ -145,6 +141,20 @@ class GatedMLP(nn.Module):
 
     def forward(self, x):
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
+
+
+class ReLU2MLP(nn.Module):
+    def __init__(
+        self,
+        hidden_size: int,
+        intermediate_size: int,
+    ):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        # TODO: implement ReLU^2 MLP
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor: pass
 
 
 class TransformerBlock(nn.Module):
