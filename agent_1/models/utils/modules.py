@@ -30,12 +30,7 @@ class PatchEmbed(nn.Module):
             raise ValueError(f"Invalid patch dimension: {patch_dim}")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if len(x.shape) == 5:
-            return rearrange(self.conv(x), "b c t h w -> b (t h w) c")
-        elif len(x.shape) == 4:
-            return rearrange(self.conv(x), "b c h w -> b (h w) c")
-        else:
-            raise ValueError(f"Invalid input shape: {x.shape}")
+        return rearrange(self.conv(x), "b c ... -> b (...) c")
 
 
 def apply_rope(
@@ -56,7 +51,7 @@ def build_rope_cache(
     return angles.cos(), angles.sin()
 
 class RoPE(nn.Module):
-    """Axial RoPE for 1D sequences and 2D/3D grids.
+    """Axial RoPE for 1D/2D/3D inputs.
 
     dim_partitions specifies the subspace dims to partition head_dim into.
     e.g. (16, 24, 24) for a 3D grid with head_dim=64.

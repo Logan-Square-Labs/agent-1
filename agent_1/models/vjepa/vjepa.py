@@ -1,5 +1,5 @@
 import torch
-from agent_1.models.utils.modules import MaskGenerator, PatchEmbed, ViT
+from agent_1.models.utils.modules import PatchEmbed, ViT
 
 
 class Encoder(torch.nn.Module):
@@ -21,8 +21,12 @@ class VJEPA(torch.nn.Module):
         super().__init__()
         self.encoder = Encoder()
         self.predictor = Predictor()
-        self.mask_generator = MaskGenerator()
-    
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        return self.encoder(x)
+
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        return self.predictor(x)
+
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        mask = self.mask_generator(x)
-        return self.encoder(x * mask), self.predictor(self.encoder(x, mask))
+        return self.encode(x), self.predict(self.encode(x))
