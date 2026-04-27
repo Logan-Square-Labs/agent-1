@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-from einops import rearrange
+from einops import rearrange, repeat
 
 
 class PatchEmbed(nn.Module):
@@ -33,6 +33,25 @@ class PatchEmbed(nn.Module):
         return rearrange(self.conv(x), "b c ... -> b (...) c")
 
 
+def apply_masks(x: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
+    """Gather tokens by per-sample index. x: [B, N, D], indices: [B, K] -> [B, K, D]."""
+    return torch.gather(x, 1, repeat(indices, "b k -> b k d", d=x.size(-1)))
+
+
+def grid_positions(
+    indices: torch.Tensor,
+    grid_size: tuple[int, ...],
+) -> tuple[torch.Tensor, ...]:
+    """Decompose flat indices in [0, prod(grid_size)) into per-axis coordinates."""
+    coords = []
+    for i, axis_len in enumerate(grid_size):
+        stride = 1
+        for axis in grid_size[i + 1:]:
+            stride *= axis
+        coords.append((indices // stride) % axis_len)
+    return tuple(coords)
+
+
 def apply_rope(
     x: torch.Tensor,
     cos: torch.Tensor,
@@ -55,6 +74,9 @@ class RoPE(nn.Module):
 
     dim_partitions specifies the subspace dims to partition head_dim into.
     e.g. (16, 24, 24) for a 3D grid with head_dim=64.
+
+    Forward accepts per-axis position tensors so masked / reordered sequences
+    rotate by their original-grid coordinates rather than sequential 0..N-1.
     """
 
     def __init__(
@@ -69,22 +91,40 @@ class RoPE(nn.Module):
         assert sum(dim_partitions) == head_dim, f"partitions must sum to head_dim ({head_dim})"
         assert all(d % 2 == 0 for d in dim_partitions), "each partition must be even"
 
-        coords = torch.meshgrid(
-            *[torch.arange(s, dtype=torch.float32) for s in grid_size],
-            indexing="ij",
-        )
+        self.head_dim = head_dim
+        self.grid_size = grid_size
+        self.dim_partitions = dim_partitions
+
+        for i, (axis_len, p) in enumerate(zip(grid_size, dim_partitions)):
+            cos_i, sin_i = build_rope_cache(p, torch.arange(axis_len, dtype=torch.float32), theta)
+            self.register_buffer(f"cos_{i}", cos_i, persistent=False)
+            self.register_buffer(f"sin_{i}", sin_i, persistent=False)
+
+    def forward(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        positions: Optional[tuple[torch.Tensor, ...]] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if positions is None:
+            flat = torch.arange(q.shape[-2], device=q.device)
+            positions = grid_positions(flat, self.grid_size)
 
         cos_parts, sin_parts = [], []
-        for i, p in enumerate(dim_partitions):
-            cos_i, sin_i = build_rope_cache(p, coords[i].flatten(), theta)
-            cos_parts.append(cos_i)
-            sin_parts.append(sin_i)
+        for i in range(len(self.grid_size)):
+            cos_parts.append(getattr(self, f"cos_{i}")[positions[i]])
+            sin_parts.append(getattr(self, f"sin_{i}")[positions[i]])
+        cos = torch.cat(cos_parts, dim=-1)
+        sin = torch.cat(sin_parts, dim=-1)
 
-        self.register_buffer("cos", torch.cat(cos_parts, dim=-1))
-        self.register_buffer("sin", torch.cat(sin_parts, dim=-1))
+        # broadcast over the heads axis between batch and seq
+        if cos.ndim == 2:
+            cos = rearrange(cos, "n d -> 1 1 n d")
+            sin = rearrange(sin, "n d -> 1 1 n d")
+        elif cos.ndim == 3:
+            cos = rearrange(cos, "b n d -> b 1 n d")
+            sin = rearrange(sin, "b n d -> b 1 n d")
 
-    def forward(self, q: torch.Tensor, k: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        cos, sin = self.cos[: q.shape[-2]], self.sin[: q.shape[-2]]
         return apply_rope(q, cos, sin), apply_rope(k, cos, sin)
 
 
@@ -96,7 +136,7 @@ class Attention(nn.Module):
         self,
         num_heads: int,
         head_dim: int,
-        rope: RoPE = None,
+        rope: Optional[RoPE] = None,
     ):
         super().__init__()
         self.num_heads = num_heads
@@ -106,16 +146,19 @@ class Attention(nn.Module):
         self.qkv = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
         self.proj = nn.Linear(embed_dim, embed_dim, bias=False)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # todo: add positions to handle masked values from original grid
+    def forward(
+        self,
+        x: torch.Tensor,
+        positions: Optional[tuple[torch.Tensor, ...]] = None,
+    ) -> torch.Tensor:
         q, k, v = rearrange(
             self.qkv(x), "b n (three h d) -> b three h n d", three=3, h=self.num_heads
         ).unbind(dim=1)
-        
+
         q, k = norm(q), norm(k)
-        
+
         if self.rope is not None:
-            q, k = self.rope(q, k)
+            q, k = self.rope(q, k, positions)
         x = F.scaled_dot_product_attention(q, k, v)
         x = self.proj(rearrange(x, "b h n d -> b n (h d)"))
         return x
@@ -138,20 +181,6 @@ class GatedMLP(nn.Module):
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
 
 
-class ReLU2MLP(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int,
-        intermediate_size: int,
-    ):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size
-        # TODO: implement ReLU^2 MLP
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor: pass
-
-
 class TransformerBlock(nn.Module):
     def __init__(
         self,
@@ -159,16 +188,20 @@ class TransformerBlock(nn.Module):
         intermediate_size: int,
         num_heads: int,
         head_dim: int,
-        rope: RoPE = None,
+        rope: Optional[RoPE] = None,
     ):
         super().__init__()
         self.norm1 = nn.RMSNorm(hidden_size)
         self.norm2 = nn.RMSNorm(hidden_size)
-        self.attn = Attention(num_heads, head_dim)
+        self.attn = Attention(num_heads, head_dim, rope=rope)
         self.mlp = GatedMLP(hidden_size, intermediate_size)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x + self.attn(self.norm1(x))
+    def forward(
+        self,
+        x: torch.Tensor,
+        positions: Optional[tuple[torch.Tensor, ...]] = None,
+    ) -> torch.Tensor:
+        x = x + self.attn(self.norm1(x), positions)
         x = x + self.mlp(self.norm2(x))
         return x
 
@@ -177,6 +210,7 @@ class ViT(nn.Module):
     def __init__(
         self,
         patch_dim: tuple,
+        in_channels: int,
         hidden_size: int,
         intermediate_size: int,
         num_heads: int,
@@ -187,9 +221,10 @@ class ViT(nn.Module):
         rope_theta: float = 10000.0,
     ):
         super().__init__()
+        self.grid_size = grid_size
         self.patch_embed = PatchEmbed(
             patch_dim=patch_dim,
-            in_channels=hidden_size,
+            in_channels=in_channels,
             embed_dim=hidden_size,
         )
         self.rope = RoPE(
@@ -209,11 +244,17 @@ class ViT(nn.Module):
         ])
         self.norm = nn.RMSNorm(hidden_size)
 
-    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        indices: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         x = self.patch_embed(x)
-        if mask is not None:
-            x = x * mask
+        if indices is not None:
+            x = apply_masks(x, indices)
+            positions = grid_positions(indices, self.grid_size)
+        else:
+            positions = None
         for block in self.blocks:
-            x = block(x)
-        x = self.norm(x)
-        return x
+            x = block(x, positions)
+        return self.norm(x)
