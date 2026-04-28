@@ -17,8 +17,10 @@ dependencies = [
     "numpy",
     "playwright",
     "python-dotenv>=1.2.2",
+    "pyyaml",
     "torch",
     "tqdm",
+    "wandb",
     "webdataset",
 ]
 

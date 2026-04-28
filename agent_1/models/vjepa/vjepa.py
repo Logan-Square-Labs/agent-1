@@ -145,3 +145,11 @@ class VJEPA(nn.Module):
         params_k = list(self.target_encoder.parameters())
         torch._foreach_mul_(params_k, m)
         torch._foreach_add_(params_k, params_q, alpha=1.0 - m)
+
+
+def vjepa_loss(
+    zs: list[torch.Tensor],
+    hs: list[torch.Tensor],
+    p: float = 1.0,
+) -> torch.Tensor:
+    return sum((z - h).abs().pow(p).mean() / p for z, h in zip(zs, hs)) / len(zs)

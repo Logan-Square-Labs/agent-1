@@ -73,9 +73,8 @@ def test_vjepa_forward_returns_parallel_lists():
     zs, hs = model(x, masks_enc, masks_pred)
 
     assert len(zs) == len(hs) == 2
-    for (z, h), m_pred in zip(zs_hs := list(zip(zs, hs)), masks_pred):
+    for z, h, m_pred in zip(zs, hs, masks_pred):
         assert z.shape == h.shape == (B, m_pred.shape[1], 32)
-    _ = zs_hs  # silence unused-warning lint if any
 
 
 def test_target_encoder_frozen_after_construction():
