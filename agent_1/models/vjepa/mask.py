@@ -69,6 +69,7 @@ class MaskGenerator:
             enc_indices.append(m_enc)
             pred_indices.append(m_pred)
 
+        # truncate to min kept indices for uniform sequence len across batch for collation
         enc_indices = [m[:min_keep_enc] for m in enc_indices]
         pred_indices = [m[:min_keep_pred] for m in pred_indices]
         return default_collate(enc_indices), default_collate(pred_indices)

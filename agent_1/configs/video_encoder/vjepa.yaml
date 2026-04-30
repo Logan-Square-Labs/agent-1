@@ -26,9 +26,14 @@ predictor:
   dim_partitions: [16, 24, 24]
 
 mask:
-  - mask_area_ratio: 0.5       # fraction of spatial area each block covers
+  # Big blocks — predictor extrapolates across wide gaps. Encoder sees ~9% of patches.
+  - mask_area_ratio: 0.7
     mask_ar_range: [0.75, 1.5]
-    num_sub_masks: 2           # blocks intersected to form the predictor target
+    num_sub_masks: 2
+  # Small blocks — predictor fills in scattered holes. Encoder sees ~27% of patches.
+  - mask_area_ratio: 0.15
+    mask_ar_range: [0.75, 1.5]
+    num_sub_masks: 8
 
 ema:
   start: 0.998                 # m at step 0 — target moves toward encoder fastest here
