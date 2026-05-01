@@ -150,7 +150,7 @@ def main():
         devices=args.devices,
         logger=logger,
         log_every_n_steps=cfg.train.log_every_n_steps,
-        val_check_interval=cfg.train.val_check_interval if val_loader else None,
+        val_check_interval=cfg.train.val_check_interval if args.val_shards else None,
         callbacks=callbacks,
         default_root_dir=str(args.ckpt_dir),
     )
