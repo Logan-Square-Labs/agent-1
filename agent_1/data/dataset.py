@@ -35,6 +35,12 @@ def _decode_video(mp4_bytes: bytes, pixel_format: PixelFormat = "gray") -> torch
     return rearrange(video, "t h w c -> t c h w")
 
 
+def _process_sample(sample):
+    video = _decode_video(sample["mp4"])
+    meta = json.loads(sample["json"])
+    return {"video": video, **meta}
+
+
 def make_dataset(
     urls: str | list[str],
     *,
@@ -60,17 +66,11 @@ def make_dataset(
             "start_frame": int
             "end_frame": int
     """
-
-    def process_sample(sample):
-        video = _decode_video(sample["mp4"])
-        meta = json.loads(sample["json"])
-        return {"video": video, **meta}
-
     dataset = wds.WebDataset(urls, shardshuffle=shardshuffle)
 
     if shuffle_buffer > 0:
         dataset = dataset.shuffle(shuffle_buffer)
 
-    dataset = dataset.map(process_sample)
+    dataset = dataset.map(_process_sample)
 
     return dataset

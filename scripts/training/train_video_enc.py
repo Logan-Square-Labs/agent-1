@@ -66,7 +66,6 @@ def build_lit_config(cfg) -> SimpleNamespace:
 
 
 def _prep_video(sample):
-    # Decoded videos are uint8 [T, C, H, W]; Conv3d wants float [C, T, H, W].
     v = sample["video"].float() / 255.0
     return {**sample, "video": rearrange(v, "t c h w -> c t h w")}
 
