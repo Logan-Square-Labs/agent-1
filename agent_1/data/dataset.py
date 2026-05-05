@@ -43,28 +43,55 @@ def _process_sample(sample):
     return {"video": video, **meta}
 
 
-# redimentary s3 routing for webdataset shard paths
+# Module-level boto3 client, created lazily once per process.
+# Using a module-level (not closure) variable makes _gopen_s3 picklable,
+# which is required when DataLoader spawns workers rather than forking.
+_s3_client = None
+
+
+def _get_s3_client():
+    global _s3_client
+    if _s3_client is None:
+        import boto3
+        _s3_client = boto3.client(
+            "s3",
+            endpoint_url=os.environ["R2_ENDPOINT_URL"],
+            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        )
+    return _s3_client
+
+
+def _gopen_s3(url, mode="rb", bufsize=8192, **kw):
+    import botocore.exceptions
+    parsed = urlparse(url)
+    try:
+        return _get_s3_client().get_object(Bucket=parsed.netloc, Key=parsed.path.lstrip("/"))["Body"]
+    except botocore.exceptions.ClientError as e:
+        code = e.response["Error"]["Code"]
+        if code in ("NoSuchKey", "404"):
+            raise FileNotFoundError(f"{url}: key not found") from None
+        raise OSError(f"{url}: S3 error {code}") from None
+
+
+def _ensure_s3_handler() -> None:
+    if "s3" not in wds.gopen_schemes:
+        wds.gopen_schemes["s3"] = _gopen_s3
+
+
+def s3_worker_init(worker_id: int) -> None:
+    """DataLoader worker_init_fn that re-registers the S3 gopen handler.
+
+    Spawned workers start with a fresh module state and lose any handler
+    registered in the main process, so each worker must re-register.
+    """
+    _ensure_s3_handler()
+
+
 def _maybe_register_s3_handler(urls: str | list[str]) -> None:
     urls_list = [urls] if isinstance(urls, str) else urls
-    if not any(u.startswith("s3://") for u in urls_list):
-        return
-    if "s3" in wds.gopen_schemes:
-        return
-
-    import boto3
-
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=os.environ["R2_ENDPOINT_URL"],
-        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-    )
-
-    def _gopen_s3(url, mode="rb", bufsize=8192, **kw):
-        parsed = urlparse(url)
-        return s3.get_object(Bucket=parsed.netloc, Key=parsed.path.lstrip("/"))["Body"]
-
-    wds.gopen_schemes["s3"] = _gopen_s3
+    if any(u.startswith("s3://") for u in urls_list):
+        _ensure_s3_handler()
 
 
 def make_dataset(

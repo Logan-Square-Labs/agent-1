@@ -18,11 +18,14 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from agent_1.data.dataset import make_dataset
+from agent_1.data.dataset import make_dataset, s3_worker_init
 from agent_1.models.vjepa.mask import MaskCollator
 from agent_1.models.vjepa.vjepa import VJEPA
 from agent_1.trainers.vjepa_trainer import LitVJEPA
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def to_ns(d):
     if isinstance(d, dict):
@@ -85,12 +88,14 @@ def build_dataloader(cfg, shards: str, *, train: bool) -> DataLoader:
         }
         for m in cfg.mask
     ]
+    uses_s3 = shards.startswith("s3://")
     return DataLoader(
         dataset,
         batch_size=cfg.data.batch_size,
         collate_fn=MaskCollator(mask_configs),
         num_workers=cfg.data.num_workers,
         persistent_workers=cfg.data.num_workers > 0,
+        worker_init_fn=s3_worker_init if uses_s3 else None,
     )
 
 
