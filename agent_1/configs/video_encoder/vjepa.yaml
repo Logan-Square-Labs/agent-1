@@ -26,11 +26,15 @@ predictor:
   dim_partitions: [16, 24, 24]
 
 mask:
-  # Big blocks — predictor extrapolates across wide gaps. Encoder sees ~9% of patches.
-  - mask_area_ratio: 0.7
+  # V-JEPA2 uses spatial_scale=0.7 on a 16×16 grid (256 patches), giving ~3-patch
+  # block margins per dimension. Our 9×10 grid (90 patches) requires 0.4 to achieve
+  # the same relative margins (~3 patches), otherwise two sub-masks nearly always
+  # overlap entirely and leave the encoder with <10% of patches as context.
+  # Big blocks — predictor extrapolates across wide gaps.
+  - mask_area_ratio: 0.4
     mask_ar_range: [0.75, 1.5]
     num_sub_masks: 2
-  # Small blocks — predictor fills in scattered holes. Encoder sees ~27% of patches.
+  # Small blocks — predictor fills in scattered holes.
   - mask_area_ratio: 0.15
     mask_ar_range: [0.75, 1.5]
     num_sub_masks: 8

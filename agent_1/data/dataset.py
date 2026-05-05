@@ -1,6 +1,8 @@
 import io
 import json
+import os
 from typing import Literal
+from urllib.parse import urlparse
 
 import av
 import numpy as np
@@ -41,6 +43,30 @@ def _process_sample(sample):
     return {"video": video, **meta}
 
 
+# redimentary s3 routing for webdataset shard paths
+def _maybe_register_s3_handler(urls: str | list[str]) -> None:
+    urls_list = [urls] if isinstance(urls, str) else urls
+    if not any(u.startswith("s3://") for u in urls_list):
+        return
+    if "s3" in wds.gopen_schemes:
+        return
+
+    import boto3
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=os.environ["R2_ENDPOINT_URL"],
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+    )
+
+    def _gopen_s3(url, mode="rb", bufsize=8192, **kw):
+        parsed = urlparse(url)
+        return s3.get_object(Bucket=parsed.netloc, Key=parsed.path.lstrip("/"))["Body"]
+
+    wds.gopen_schemes["s3"] = _gopen_s3
+
+
 def make_dataset(
     urls: str | list[str],
     *,
@@ -66,6 +92,7 @@ def make_dataset(
             "start_frame": int
             "end_frame": int
     """
+    _maybe_register_s3_handler(urls)
     dataset = wds.WebDataset(urls, shardshuffle=shardshuffle)
 
     if shuffle_buffer > 0:

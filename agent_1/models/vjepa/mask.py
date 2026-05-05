@@ -17,6 +17,7 @@ class MaskCollator:
                 mask_area_ratio=config["mask_area_ratio"],
                 mask_ar_range=config["mask_ar_range"],
                 num_sub_masks=config["num_sub_masks"],
+                allow_overlap=config.get("allow_overlap", True),
             ) for config in mask_configs
         ]
 
@@ -40,39 +41,34 @@ class MaskGenerator:
         mask_area_ratio: float,
         mask_ar_range: tuple[float, float],
         num_sub_masks: int,
+        allow_overlap: bool = True,
     ):
         self.grid_size = grid_size
         self.mask_area_ratio = mask_area_ratio
         self.mask_ar_range = mask_ar_range
         self.num_sub_masks = num_sub_masks
+        self.allow_overlap = allow_overlap
 
     def __call__(self, batch_size: int) -> tuple[torch.Tensor, torch.Tensor]:
-        t_grid, h_grid, w_grid = self.grid_size
-        num_patches = t_grid * h_grid * w_grid
         block_size = _sample_block_size(self.grid_size, self.mask_area_ratio, self.mask_ar_range)
 
-        enc_indices, pred_indices = [], []
-        min_keep_enc, min_keep_pred = num_patches, num_patches
-        for _ in range(batch_size):
-            while True:
-                mask = torch.ones(self.grid_size, dtype=torch.int32)
-                for _ in range(self.num_sub_masks):
-                    mask *= _sample_block_mask(self.grid_size, block_size)
-                mask = mask.flatten()
-                m_enc = torch.nonzero(mask, as_tuple=False).squeeze(-1)
-                m_pred = torch.nonzero(mask == 0, as_tuple=False).squeeze(-1)
-                if len(m_enc) > 0 and len(m_pred) > 0:
-                    break
+        # sample a shared mask layout for the batch to ensure uniform patch counts
+        while True:
+            shared_mask = torch.ones(self.grid_size, dtype=torch.int32)
+            occupied = torch.zeros(self.grid_size, dtype=torch.bool) if not self.allow_overlap else None
+            for _ in range(self.num_sub_masks):
+                block_mask, occupied = _sample_block_mask(self.grid_size, block_size, occupied)
+                if block_mask is not None:
+                    shared_mask *= block_mask
+            shared_mask = shared_mask.flatten()
+            m_enc = torch.nonzero(shared_mask, as_tuple=False).squeeze(-1)
+            m_pred = torch.nonzero(shared_mask == 0, as_tuple=False).squeeze(-1)
+            if len(m_enc) > 0 and len(m_pred) > 0:
+                break
 
-            min_keep_enc = min(min_keep_enc, len(m_enc))
-            min_keep_pred = min(min_keep_pred, len(m_pred))
-            enc_indices.append(m_enc)
-            pred_indices.append(m_pred)
-
-        # truncate to min kept indices for uniform sequence len across batch for collation
-        enc_indices = [m[:min_keep_enc] for m in enc_indices]
-        pred_indices = [m[:min_keep_pred] for m in pred_indices]
-        return default_collate(enc_indices), default_collate(pred_indices)
+        enc_indices = m_enc.unsqueeze(0).expand(batch_size, -1)
+        pred_indices = m_pred.unsqueeze(0).expand(batch_size, -1)
+        return enc_indices.contiguous(), pred_indices.contiguous()
 
 
 def _sample_block_size(
@@ -93,13 +89,23 @@ def _sample_block_size(
 def _sample_block_mask(
     grid_size: tuple[int, int, int],
     block_size: tuple[int, int, int],
-) -> torch.Tensor:
+    occupied: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
     t_grid, h_grid, w_grid = grid_size
     t, h, w = block_size
-    top = torch.randint(0, h_grid - h + 1, (1,)).item()
-    left = torch.randint(0, w_grid - w + 1, (1,)).item()
-    start = torch.randint(0, t_grid - t + 1, (1,)).item()
 
-    mask = torch.ones(grid_size, dtype=torch.int32)
-    mask[start : start + t, top : top + h, left : left + w] = 0
-    return mask
+    # if checking for overlap, try 100 times to find a non-overlapping block
+    for _ in range(100):
+        top = torch.randint(0, h_grid - h + 1, (1,)).item()
+        left = torch.randint(0, w_grid - w + 1, (1,)).item()
+        start = torch.randint(0, t_grid - t + 1, (1,)).item()
+        if occupied is None or not occupied[start : start + t, top : top + h, left : left + w].any():
+            mask = torch.ones(grid_size, dtype=torch.int32)
+            mask[start : start + t, top : top + h, left : left + w] = 0
+            if occupied is not None:
+                occupied = occupied.clone()
+                occupied[start : start + t, top : top + h, left : left + w] = True
+            return mask, occupied
+
+    # if we can't find a non-overlapping block, return None
+    return None, occupied
