@@ -65,6 +65,7 @@ def build_lit_config(cfg) -> SimpleNamespace:
         loss_exp=cfg.optim.loss_exp,
         ema_start=cfg.ema.start,
         ema_end=cfg.ema.end,
+        ema_ipe_scale=cfg.ema.ipe_scale,
     )
 
 
@@ -99,22 +100,16 @@ def build_dataloader(cfg, shards: str, *, train: bool) -> DataLoader:
     )
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--config", required=True, type=Path)
-    p.add_argument("--shards", required=True, type=str, help="WebDataset shard URLs (brace expansion supported)")
-    p.add_argument("--val-shards", default=None, type=str)
-    p.add_argument("--ckpt-dir", default=Path("checkpoints"), type=Path)
-    p.add_argument("--wandb-project", default="agent-1")
-    p.add_argument("--wandb-run-name", default=None)
-    p.add_argument("--devices", default=1, type=int)
-    p.add_argument("--seed", default=42, type=int)
-    p.add_argument("--no-wandb", action="store_true")
-    args = p.parse_args()
+def train(raw_cfg: dict, args, *, wandb_run=None) -> None:
+    """Run one training trial.
 
+    args requires: shards, val_shards, ckpt_dir, devices, seed, no_wandb,
+                   wandb_project, wandb_run_name.
+    wandb_run: attach to an existing wandb run (e.g. from a sweep agent)
+               instead of creating a new one.
+    """
     L.seed_everything(args.seed, workers=True)
 
-    raw_cfg = yaml.safe_load(args.config.read_text())
     cfg = to_ns(raw_cfg)
     args.ckpt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -127,16 +122,16 @@ def main():
         if args.val_shards else None
     )
 
-    logger = (
-        None if args.no_wandb else
-        WandbLogger(
+    if not args.no_wandb:
+        logger = WandbLogger(
             project=args.wandb_project,
             name=args.wandb_run_name,
             save_dir=str(args.ckpt_dir),
+            **({"experiment": wandb_run} if wandb_run is not None else {}),
         )
-    )
-    if logger is not None:
         logger.log_hyperparams(raw_cfg)
+    else:
+        logger = None
 
     callbacks = [
         ModelCheckpoint(
@@ -159,6 +154,23 @@ def main():
         default_root_dir=str(args.ckpt_dir),
     )
     trainer.fit(lit_model, train_loader, val_loader)
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--config", required=True, type=Path)
+    p.add_argument("--shards", required=True, type=str, help="WebDataset shard URLs (brace expansion supported)")
+    p.add_argument("--val-shards", default=None, type=str)
+    p.add_argument("--ckpt-dir", default=Path("checkpoints"), type=Path)
+    p.add_argument("--wandb-project", default="agent-1")
+    p.add_argument("--wandb-run-name", default=None)
+    p.add_argument("--devices", default=1, type=int)
+    p.add_argument("--seed", default=42, type=int)
+    p.add_argument("--no-wandb", action="store_true")
+    args = p.parse_args()
+
+    raw_cfg = yaml.safe_load(args.config.read_text())
+    train(raw_cfg, args)
 
 
 if __name__ == "__main__":
