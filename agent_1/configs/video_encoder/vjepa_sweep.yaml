@@ -1,0 +1,35 @@
+method: bayes
+metric:
+  name: val/loss
+  goal: minimize
+
+parameters:
+  "optim.encoder_lr":
+    distribution: log_uniform_values
+    min: 1.0e-5
+    max: 1.0e-3
+
+  "optim.predictor_lr":
+    distribution: log_uniform_values
+    min: 1.0e-5
+    max: 1.0e-3
+
+  "optim.loss_exp":
+    values: [1.0, 2.0]
+
+  "ema.start":
+    distribution: uniform
+    min: 0.994
+    max: 0.999
+
+  # Big-block mask coverage
+  "mask.0.mask_area_ratio":
+    distribution: uniform
+    min: 0.25
+    max: 0.55
+
+  # Small-block mask coverage
+  "mask.1.mask_area_ratio":
+    distribution: uniform
+    min: 0.05
+    max: 0.25

@@ -57,8 +57,8 @@ uv run python scripts/training/train_video_enc.py \
 ```bash
 uv run python scripts/training/train_video_enc.py \
     --config agent_1/configs/video_encoder/vjepa.yaml \
-    --shards "data/shards/{000000..0000646}.tar" \
-    --val-shards "data/shards/{000647..000697}.tar" \
+    --shards "s3://datasets/vision_encoder/DMG/longplays/{000000..0000646}.tar" \
+    --val-shards "s3://datasets/vision_encoder/DMG/longplays/{000647..000697}.tar" \
     --wandb-run-name vjepa-base-run-01 \
     --wandb-project agent-1 \
     --ckpt-dir checkpoints/vjepa-base-run-01

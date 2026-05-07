@@ -90,12 +90,13 @@ def _sample_block_mask(
     grid_size: tuple[int, int, int],
     block_size: tuple[int, int, int],
     occupied: torch.Tensor,
+    max_attempts: int = 100,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     t_grid, h_grid, w_grid = grid_size
     t, h, w = block_size
 
-    # if checking for overlap, try 100 times to find a non-overlapping block
-    for _ in range(100):
+    # if checking for overlap, try max_attempts times to find a non-overlapping block
+    for _ in range(max_attempts):
         top = torch.randint(0, h_grid - h + 1, (1,)).item()
         left = torch.randint(0, w_grid - w + 1, (1,)).item()
         start = torch.randint(0, t_grid - t + 1, (1,)).item()
@@ -107,5 +108,5 @@ def _sample_block_mask(
                 occupied[start : start + t, top : top + h, left : left + w] = True
             return mask, occupied
 
-    # if we can't find a non-overlapping block, return None
+    # if we can't find a non-overlapping block after max_attempts, return None
     return None, occupied
