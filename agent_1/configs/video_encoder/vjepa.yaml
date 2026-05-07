@@ -49,7 +49,7 @@ optim:
 train:
   max_steps: 100000
   precision: bf16-mixed
-  compile: false
+  compile: true
   log_every_n_steps: 10
-  val_check_interval: 2000     # only used when --val-shards is passed
-  ckpt_every_n_steps: 2000
+  val_check_interval: 1000     # only used when --val-shards is passed
+  ckpt_every_n_steps: 1000
